@@ -1,6 +1,6 @@
 # PRD v2: Intake Document Classifier & Work-Comp Tracker
 
-**Status:** v1 is already implemented and deployed as a live Google Apps Script project. v2 below is an **incremental update to that existing deployment**, not a greenfield build — see "Existing deployment & incremental-update strategy" under Implementation Decisions before starting.  
+**Status:** v1 is already implemented and deployed as a live Google Apps Script project. v2 below is an **incremental update to that existing deployment**, not a greenfield build — see "Existing deployment & incremental-update strategy" under Implementation Decisions before starting, and [Implementation Guide v2](./IMPLEMENTATION-GUIDE-v2.md) for concrete step-by-step instructions and code.  
 **Platform:** Google Apps Script (JavaScript), container-bound to the audit-log Google Sheet  
 **Owner:** Front-desk / WC intake (personal internal tool)  
 **Supersedes / extends:** [PRD v1](./PRD.md) (Work-Comp Authorization Extractor)
@@ -92,6 +92,8 @@ This repo currently contains only documentation (no `.gs`/`.json` source), so th
 
 1. Pull your live project into this repo with `clasp pull` (or paste the relevant files) so the plan can reference real function/field names.
 2. Confirm the three "quick self-check" questions below, since they determine which rows in the table are realistically config-only for your project.
+
+For concrete, ready-to-adapt code for every phase below, see [Implementation Guide v2](./IMPLEMENTATION-GUIDE-v2.md).
 
 **Quick self-check (answer these against your real code before starting):**
 

@@ -1,6 +1,6 @@
 # PRD v2: Intake Document Classifier & Work-Comp Tracker
 
-**Status:** Ready for agent  
+**Status:** v1 is already implemented and deployed as a live Google Apps Script project. v2 below is an **incremental update to that existing deployment**, not a greenfield build — see "Existing deployment & incremental-update strategy" under Implementation Decisions before starting.  
 **Platform:** Google Apps Script (JavaScript), container-bound to the audit-log Google Sheet  
 **Owner:** Front-desk / WC intake (personal internal tool)  
 **Supersedes / extends:** [PRD v1](./PRD.md) (Work-Comp Authorization Extractor)
@@ -83,6 +83,46 @@ Same as v1, plus:
 ---
 
 ## Implementation Decisions
+
+### Existing deployment & incremental-update strategy (v2 planning)
+
+v1 is already built and running as a live Apps Script project (not starting from scratch). This section exists to calibrate expectations about how much of v2 is a **configuration change** (editing your existing config JSON — referred to here as `apps.json`, whatever its actual filename is in your project — or Script Properties) versus a **code change** (editing `.gs` files: new functions, new modules, new template branches).
+
+This repo currently contains only documentation (no `.gs`/`.json` source), so the split below is a best-effort estimate based on common Apps Script + Gemini structured-extraction patterns, not a review of your actual code. Two things would let a future pass be exact instead of estimated:
+
+1. Pull your live project into this repo with `clasp pull` (or paste the relevant files) so the plan can reference real function/field names.
+2. Confirm the three "quick self-check" questions below, since they determine which rows in the table are realistically config-only for your project.
+
+**Quick self-check (answer these against your real code before starting):**
+
+1. Does your Gemini call use a **structured `responseSchema`** (JSON Schema passed in `generationConfig`) to define extracted fields, and is that schema stored in a separate JSON file/config rather than inlined as a hardcoded object in a `.gs` file? If yes, adding new *scalar* fields (like DOI) to that schema is genuinely config-only.
+2. Does `ResponseParser` **pass through whatever fields the schema declares**, or does it use a hardcoded allow-list / typed object per field? A hardcoded allow-list means new fields need a small code change even if the schema itself is config-driven.
+3. Does `EmailComposer` render fields **generically from a field-list config** (e.g., "for each field in this category's config, render a row"), or does it have **hardcoded HTML per field**? Hardcoded HTML means every new field/section (pre-authorization block, NPI block, category banner) needs a template edit regardless of config.
+
+**Config-only vs. code-change estimate per v2 requirement:**
+
+| v2 requirement | Likely config-only (`apps.json` / Script Properties)? | Why |
+|---|---|---|
+| Date of injury (DOI) field | **Likely yes**, if self-check #1 and #2 are both "yes" | It's a new scalar field with no new business logic attached — just another value to extract and display. |
+| Review # / Referral ID # fields (raw values) | **Likely yes**, same conditions as DOI | Same as above — new scalar fields. |
+| Primary auth identifier (derived: first non-empty of auth #/review #/referral ID) | **No — needs a small code change** | This is new derivation logic (a pick-first-non-empty function with a priority order) that v1 never had, even though the *priority order itself* can be config. |
+| Pre-authorization section (`preAuthorization` object + banner) | **No — needs a code change** | New nested object shape, a new `ReviewPolicy` rule, and a new `EmailComposer` template block. The field *content* can be schema-driven; the rendering and flagging logic is not. |
+| NPI lookup (`NpiLookup` module) | **No — needs a code change** | This is a wholly new capability: reading a second spreadsheet, normalizing provider names, and fuzzy-matching. Only the spreadsheet ID/tab/column names and match thresholds are config; the matching logic itself must be written. |
+| Document classification (`category` + confidence) | **Partly** — the `category` field + enum can be schema/config-driven if self-check #1 is "yes" | But the branching logic that *acts* on the category (which template to render, which label to apply, which recipients to CC, which confidence thresholds trigger which banner) is new orchestration/`ReviewPolicy` code. Threshold *values* can be config. |
+| Category-specific processed Gmail labels | **No — needs a code change** | `IntakeReader`/Orchestrator currently does one fixed label swap; routing to one of several labels based on category is new logic. Label *names* can be config. |
+| Category-aware email subjects/sections | **No — needs a code change**, unless self-check #3 is "yes" | If `EmailComposer` is already generic/field-list-driven, this could be mostly config. If it has hardcoded per-field HTML (common in v1-scale projects), each category needs a new template branch. |
+| Audit log new columns | **No — needs a code change**, unless `AuditLogger` already takes a generic key-value map | New values need new `appendRow` calls; the column *set* could be config-driven if the logger was built generically, but v1's described interface (`log(authRecord, recipients, reviewNeeded)`) suggests fixed positional columns, which means a code change. |
+| Confidence thresholds, recipient maps, label names, NPI spreadsheet ID/columns | **Yes — pure config** | These are exactly what `apps.json`/Script Properties should hold regardless of how the rest of the code is structured. If they're currently hardcoded in `.gs` files, moving them into config is a good (small) side quest while doing this update. |
+
+**Recommended sequence for the update:**
+
+1. Locate your existing config file/mechanism (`apps.json`, Script Properties, or both) and confirm which of the config-only rows above already live there vs. are hardcoded — this determines your real effort, not the estimate above.
+2. Add the new scalar extraction fields (DOI, review #, referral ID, category) to the schema/config first — lowest-risk change, testable in isolation against a few real faxes in shadow mode.
+3. Write the `NpiLookup` module (new code) and wire its config (sheet ID/tab/columns/thresholds) into `apps.json`/Script Properties rather than hardcoding it.
+4. Add the primary-auth-identifier derivation and `preAuthorization` handling to `ResponseParser`/`ReviewPolicy` (small, isolated code changes).
+5. Add category-based branching to the Orchestrator (label routing) and `EmailComposer` (subject prefix, category sections, NPI block, pre-auth block, records/subpoena banner).
+6. Extend `AuditLogger` columns last, once the record shape is stable.
+7. Re-run a **targeted** shadow-mode pass (see Rollout below) focused on the new fields/categories/NPI matches rather than re-validating everything v1 already proved out.
 
 ### Platform & compliance (unchanged from v1)
 
@@ -248,9 +288,12 @@ Keep v1 deep modules; add/adjust:
 
 ### Rollout
 
-1. **Shadow mode:** all emails to tool owner only; tune classification thresholds, prompts, and NPI matching on real traffic.
-2. Expand recipients once category accuracy and NPI match quality are acceptable.
-3. Optionally enable category-specific CC (e.g. records mailbox for subpoenas) after shadow mode.
+Since v1 is already live with real recipients, v2's rollout is a **targeted re-validation of only what's new**, not a full re-run of v1's original shadow period:
+
+1. **Shadow the new surface area only:** temporarily route emails for newly-classified categories (MVA, third-party/imaging, records/subpoena) and any WC auth with an NPI match or pre-authorization block to the tool owner only, while WC auths that don't hit any new logic can continue going to real recipients as they do today. (If that selective routing is impractical to implement quickly, a short full shadow period is the fallback — but it's not required by default the way it was for the v1 launch.)
+2. Tune classification thresholds, the new field prompts/schema, and NPI matching against real traffic during this window.
+3. Expand the newly-classified categories to real recipients once category accuracy and NPI match quality are acceptable.
+4. Optionally enable category-specific CC (e.g. records mailbox for subpoenas) after validation.
 
 ---
 
@@ -283,7 +326,9 @@ Same philosophy as v1: assert **external behavior** of pure modules.
 
 ---
 
-## Configuration (Script Properties / owner setup)
+## Configuration (`apps.json` / Script Properties / owner setup)
+
+These are the values that should live in configuration (whether that's your `apps.json`, Script Properties, or a mix) rather than being hardcoded in `.gs` files, so future tuning doesn't require code edits:
 
 | Key | Purpose |
 |-----|---------|
@@ -309,6 +354,7 @@ Same philosophy as v1: assert **external behavior** of pure modules.
   4. Confirm NPI sheet column layout with the spreadsheet owner before hard-wiring property keys.
 - **Open product decision — records vs. subpoena:** v2 ships records requests and subpoena requests as a single `records_or_subpoena` category (both are "not an authorization, route to records handling"). If the owner finds these need different recipients, due-date handling, or audit columns in practice, splitting them into two categories is a small, additive change (new enum value + label + email template) and can be done post-shadow-mode without disturbing the other categories.
 - **Migration from v1:** if `WC-Auths` / `WC-Processed` already exist, Orchestrator should accept legacy label names via config during transition.
+- **Getting an exact (not estimated) implementation plan:** this repo doesn't currently contain the live Apps Script source. Pulling it in (e.g. `clasp clone`/`clasp pull` into a `src/` folder here, or pasting the key files — especially `apps.json`/config, `AuthExtractor`, `ResponseParser`, `EmailComposer`) would let the config-vs-code breakdown above be replaced with a precise, file-by-file diff plan instead of an estimate.
 - **Publishing:** file this PRD as a GitHub issue with `ready-for-agent` when implementation is kicked off; keep v1 PRD as historical baseline.
 
 ---

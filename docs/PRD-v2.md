@@ -11,7 +11,7 @@
 
 v1 solved the core pain of manually reading work-comp authorization faxes and emailing a verify-against-source field summary. In practice, the same inbox also receives **motor vehicle accident (MVA)** packets, **third-party / imaging referrals**, and **records / subpoena requests** — often from inconsistent e-fax senders and subject lines. Staff still have to open each message, figure out what kind of document it is, and route it mentally.
 
-Separately, when setting up a work-comp case, the front desk must look up the referring provider in the company's **NPI work-comp spreadsheet** to find whether an **NPI number** already exists. That lookup is easy to miss and slows intake.
+Separately, when setting up a work-comp case, the front desk must look up the referring provider in the company's **work-comp provider spreadsheet** to find whether an **NPI number** already exists on file. That lookup is easy to miss and slows intake.
 
 Extraction gaps in v1 also force extra reading of the source fax:
 
@@ -30,7 +30,7 @@ Extend the Apps Script tool into a **multi-category intake classifier + extracto
    - Records request / subpoena request
    - Unknown / needs manual triage (low confidence)
 2. **Extracts** category-appropriate fields via Vertex AI Gemini (OCR + structured extraction), still inside HIPAA-BAA-covered Google services.
-3. **Cross-references** the referring provider name against the company's **NPI work-comp spreadsheet** and surfaces any matching **NPI number** in the email (so staff do not dig for it).
+3. **Cross-references** the referring provider name against the company's **work-comp provider spreadsheet** and surfaces any matching **NPI number** in the email (so staff do not dig for it).
 4. **Emails** a per-document summary with category in the subject, confidence flags, a Drive link to the source, and never silently drops a document.
 
 Output remains an **assist, not an authority**: humans verify against the source before keying data into practice systems.
@@ -70,7 +70,7 @@ Same as v1, plus:
 37. As the WC coordinator, I want **authorization number**, **review number**, and **referral ID** all extracted when present, so that whichever label the carrier used is captured.
 38. As the WC coordinator, I want a single "primary auth identifier" surfaced in the email (preferring whichever of auth # / review # / referral ID is present), so that I have one value to key first.
 39. As the WC coordinator, I want a **pre-authorization** section when the document is a pre-auth or indicates pre-auth is required, so that I do not treat it as a fully approved visit allotment.
-40. As the WC coordinator, I want the tool to look up the referring provider in the **NPI work-comp spreadsheet** and show any matching **NPI number**, so that I do not dig through the sheet manually.
+40. As the WC coordinator, I want the tool to look up the referring provider in the **work-comp provider spreadsheet** and show any matching **NPI number**, so that I do not dig through the sheet manually.
 41. As the WC coordinator, I want fuzzy / normalized provider-name matching (e.g. "Smith, John" vs "John Smith, MD"), so that minor name formatting differences still find the NPI row.
 42. As the WC coordinator, I want ambiguous NPI matches (multiple possible rows) flagged for manual confirmation, so that the wrong NPI number is never presented as certain.
 43. As the intake staff, I want MVA packets summarized with the fields that matter for MVA intake (patient, DOI if present, referring provider, insurer/adjuster when present, key IDs), so that MVA mail is actionable in the same workflow.
@@ -111,8 +111,7 @@ Same as v1, plus:
   2. Email subject and body
   3. From / sender domain (weak signal only — e-fax headers are inconsistent)
 - **Output:** `{ category, confidence, rationale }` where `category` is one of:
-  - `wc_authorization`
-  - `wc_preauthorization` (or `wc_authorization` + `preAuth: true` — see Pre-authorization below)
+  - `wc_authorization` (pre-authorization is **not** a separate category — see Pre-authorization below; use `preAuthorization.applicable` on this same category)
   - `mva`
   - `third_party_referral` (includes imaging referrals)
   - `records_or_subpoena`
@@ -122,6 +121,9 @@ Same as v1, plus:
   - `0.50 <= confidence < 0.80` → email still sends with **⚠️ LOW CONFIDENCE CATEGORY — VERIFY TRIAGE**; use best-guess category for extraction template but banner for manual sort.
   - `confidence < 0.50` or `unknown` → email marked **⚠️ NEEDS MANUAL TRIAGE**; minimal/generic extraction; processed label `Needs-Triage`.
 - Prefer a **single Gemini call** that returns both classification and extraction JSON when practical (lower latency/cost); keep classifier logic separable so thresholds can change without rewriting prompts.
+- **Two distinct confidence concepts — do not conflate them:**
+  1. **Classification confidence** (new in v2) — how sure the model is about the document *category*, per this policy.
+  2. **Field-level confidence** (from v1, unchanged) — how sure the model is about each individual *extracted field* (patient name, claim #, etc.), independent of category. A document can be classified with high confidence while individual fields inside it are low-confidence, and vice versa. `ReviewPolicy` evaluates both and returns them separately (`triageNeeded` for classification, `reviewNeeded`/`flaggedFields` for fields).
 
 ### Extraction field set (v2)
 
@@ -164,7 +166,7 @@ Same as v1, plus:
 - Model returns `preAuthorization: { applicable: boolean, status: string|null, notes: string|null, confidence }`.
 - `applicable: true` when the document is a pre-auth, pending pre-auth, or explicitly states pre-authorization is required before treatment.
 - EmailComposer renders a dedicated **Pre-authorization** block when `applicable` is true (status/notes + flag if low confidence).
-- If the whole document is a WC pre-auth, category may be `wc_preauthorization` **or** `wc_authorization` with `preAuthorization.applicable = true` — pick one representation in implementation and keep ReviewPolicy/EmailComposer consistent. Recommendation: category `wc_authorization` + `preAuthorization` object so WC field templates stay unified.
+- **Single representation (final):** a WC pre-auth document is always classified as category `wc_authorization` with `preAuthorization.applicable = true` — there is no separate `wc_preauthorization` category. This keeps WC field templates, `ReviewPolicy`, and `EmailComposer` unified around one category. The email subject prefix is derived from the flag: `[WC Auth]` when `preAuthorization.applicable` is false, `[WC Pre-Auth]` when it's true (see Output / email below).
 
 **Category-specific emphasis (email sections, not hard schema forks):**
 
@@ -173,18 +175,20 @@ Same as v1, plus:
 - **Third-party / imaging referral:** patient, referring provider, requested study/service, referral/auth IDs, ICD if present.
 - **Records / subpoena:** requestor, patient identifiers, due date, scope; auth/visit fields usually n/a; strong banner that this is **not** an authorization.
 
-### NPI work-comp spreadsheet integration (new)
+### Work-comp provider spreadsheet integration → NPI lookup (new)
 
-- **NpiLookup** module: `lookupByProviderName(name) → { status, npiNumber?, matchedName?, candidates?, confidence }`.
-- Spreadsheet is the company's existing NPI work-comp Sheet (ID/tab/column mapping in Script Properties — not hard-coded secrets; sheet ID is configuration).
-- **Read-only** in v2: never write back to the NPI sheet.
+- The lookup source is **the company's existing work-comp provider spreadsheet** — an existing internal roster, not a document created for this project — which happens to record each provider's NPI number. It's referred to as "the NPI spreadsheet" throughout this PRD for brevity, but that's a reference to its contents, not necessarily its literal title.
+- **NpiLookup** module: `lookupByProviderName(name) → { status, npiNumber?, matchedName?, candidates?, confidence }`, where `status` is one of `matched | ambiguous | not_found`.
+- Spreadsheet ID/tab/column mapping lives in Script Properties — not hard-coded secrets; the sheet ID itself is configuration, not a credential.
+- **Read-only** in v2: never write back to the NPI spreadsheet.
 - Matching approach:
   1. Normalize extracted provider name (strip credentials MD/DO/PT, punctuation, extra whitespace; case-fold; optional last-name-first ↔ first-last reorder).
   2. Scan configured provider-name column(s); score candidates (exact normalized match > token overlap).
-  3. **Single high-confidence match** → include NPI number in email as a confirmed lookup result (still verify-against-source framing for the fax fields; NPI is "from company spreadsheet").
-  4. **Multiple plausible matches** → list top candidates in email under **⚠️ NPI MATCH AMBIGUOUS**; do not pick silently.
-  5. **No match** → show **NPI: not found in spreadsheet** (not an error; coordinator may still proceed).
-- NPI lookup runs for categories where a referring provider is relevant (at minimum WC auth/pre-auth; optionally MVA and third-party referral). Skip for pure records/subpoena unless a provider name was extracted and lookup is cheap.
+  3. **Single high-confidence match** (`status: matched`) → include NPI number in email as a confirmed lookup result (still verify-against-source framing for the fax fields; NPI is "from company spreadsheet").
+  4. **Multiple plausible matches** (`status: ambiguous`) → list top candidates in email under **⚠️ NPI MATCH AMBIGUOUS**; do not pick silently.
+  5. **No match** (`status: not_found`) → show **NPI: not found in spreadsheet** (not an error; coordinator may still proceed).
+- **Optional data-quality guard:** sanity-check that a matched NPI is exactly 10 digits before displaying it as confirmed; a non-conforming value from the spreadsheet is a spreadsheet data issue, not a lookup failure, but should still downgrade the result to "unverified format" rather than silently presenting a malformed number as trustworthy.
+- NPI lookup runs by default for WC auth/pre-auth. Whether it also runs for MVA and third-party referral (categories where a referring provider is also commonly present) is configurable via `NPI lookup categories` (see Configuration) rather than hard-coded, so it can be enabled once shadow-mode testing shows the extra lookups are useful for those categories. Skipped for records/subpoena by default unless a provider name was extracted and the category is added to that config list.
 - Cache sheet reads briefly within a single `run()` (read once per trigger execution) to avoid re-opening the Sheet for every message in the batch.
 
 ### Output / email
@@ -204,6 +208,7 @@ Same as v1, plus:
   - **NPI number** block (match / ambiguous / not found)
   - **Pre-authorization** block when applicable
   - Auth identifier subsection listing authorization #, review #, referral ID (and which was chosen as primary)
+  - For `records_or_subpoena`: a prominent **"This is not an authorization"** banner, since auth/visit fields are normally absent for this category and staff should not mistake it for an approved auth
 - Recipients unchanged unless owner configures otherwise: WC coordinator (To), Manager (CC), Biller (CC); records/subpoena may later route to a records mailbox via config — **configurable recipient map by category** in Script Properties.
 - Failure handling unchanged: never drop; missing required fields or low classification confidence → still email with clear ⚠️ banner.
 
@@ -284,12 +289,13 @@ Same philosophy as v1: assert **external behavior** of pure modules.
 |-----|---------|
 | Intake label name | Default `Intake-Pending` |
 | Processed label prefix | Default `Intake-Processed/` |
-| NPI spreadsheet ID | Company NPI work-comp Sheet |
+| NPI spreadsheet ID | Company's work-comp provider Sheet (contains NPI numbers) |
 | NPI sheet/tab name | |
 | NPI provider name column(s) | |
 | NPI number column | |
 | Recipient map by category | To/CC addresses |
 | Classification confidence thresholds | Optional overrides |
+| NPI lookup categories | Which document categories trigger an NPI lookup (default: WC auth/pre-auth only) |
 | Shadow mode flag / override recipient | |
 
 ---
@@ -301,6 +307,7 @@ Same philosophy as v1: assert **external behavior** of pure modules.
   2. Gmail filter criteria that catch WC, MVA, third-party/imaging, and records/subpoena e-faxes into the intake label despite inconsistent subjects/headers.
   3. GCP project link + Vertex AI + OAuth scopes.
   4. Confirm NPI sheet column layout with the spreadsheet owner before hard-wiring property keys.
+- **Open product decision — records vs. subpoena:** v2 ships records requests and subpoena requests as a single `records_or_subpoena` category (both are "not an authorization, route to records handling"). If the owner finds these need different recipients, due-date handling, or audit columns in practice, splitting them into two categories is a small, additive change (new enum value + label + email template) and can be done post-shadow-mode without disturbing the other categories.
 - **Migration from v1:** if `WC-Auths` / `WC-Processed` already exist, Orchestrator should accept legacy label names via config during transition.
 - **Publishing:** file this PRD as a GitHub issue with `ready-for-agent` when implementation is kicked off; keep v1 PRD as historical baseline.
 

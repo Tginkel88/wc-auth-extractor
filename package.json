@@ -1,0 +1,15 @@
+{
+  "name": "wc-auth-extractor",
+  "private": true,
+  "description": "Work-comp authorization extractor (Google Apps Script)",
+  "scripts": {
+    "push": "clasp push",
+    "pull": "clasp pull",
+    "open": "clasp open-script",
+    "run": "clasp run-function run",
+    "logs": "clasp tail-logs"
+  },
+  "devDependencies": {
+    "@google/clasp": "^3.3.0"
+  }
+}

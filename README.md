@@ -17,3 +17,28 @@ This repo currently holds documentation only — the live Apps Script source liv
 
 > PHI handling: all processing stays within Workspace/Vertex AI under a signed BAA.
 > The consumer Gemini API is never used. Not for distribution or sale.
+
+## Local development
+
+Requires [Node.js](https://nodejs.org/) and a one-time `clasp login` with the Google
+account that owns the Apps Script project.
+
+```bash
+npm install
+npm run push    # upload src/ to Apps Script
+npm run pull    # download remote changes
+npm run open    # open the script editor
+npm run run     # invoke run() remotely (requires GCP / execution API setup)
+```
+
+Project layout lives under `src/`. Configuration (Drive folder, Vertex project,
+Gmail labels, shadow-mode recipient) is in `src/Config.gs`.
+
+**Bound resources**
+
+| Resource | ID |
+|----------|-----|
+| Audit Sheet | `1RU_TGIo_8QmTbgOnscMkCedGJVmBI2ueZ5gSKWrOdm8` |
+| Apps Script | `1U5y3Zaa8uJ_1du3KbGyRRB-HUFOMVgh9x_n4uUqmrq5e5_fPswXmhe6q` |
+| GCP project | `wc-auth-extractor` |
+| Drive archive | `1kISqnklbLKZIyCBpq6Ya_NlQJaX7T5OI` |

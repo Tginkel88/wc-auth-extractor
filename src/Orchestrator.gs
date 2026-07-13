@@ -191,6 +191,11 @@ var Orchestrator = (function () {
     return timestamp + '_' + base + '.pdf';
   }
 
+  /**
+   * Installs one daily trigger per hour in Config.scheduleHours (default every 3h:
+   * 12am, 3am, 6am, 9am, 12pm, 3pm, 6pm, 9pm in the script timezone).
+   * Apps Script runs near the hour (usually within ~15 minutes), not to the minute.
+   */
   function installTrigger() {
     ScriptApp.getProjectTriggers().forEach(function (trigger) {
       if (trigger.getHandlerFunction() === 'run') {
@@ -198,8 +203,18 @@ var Orchestrator = (function () {
       }
     });
 
-    ScriptApp.newTrigger('run').timeBased().everyMinutes(10).create();
-    Logger.log('Installed 10-minute trigger for run()');
+    var hours = Config.scheduleHours || [0, 3, 6, 9, 12, 15, 18, 21];
+    hours.forEach(function (hour) {
+      ScriptApp.newTrigger('run').timeBased().atHour(hour).everyDays(1).create();
+    });
+
+    Logger.log(
+      'Installed daily triggers for run() at hours: ' +
+        hours.join(', ') +
+        ' (script TZ: ' +
+        Session.getScriptTimeZone() +
+        ')'
+    );
   }
 
   return { run: run, installTrigger: installTrigger };

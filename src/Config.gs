@@ -10,6 +10,9 @@ var Config = (function () {
     labelPending: 'WC-Auths',
     labelProcessed: 'WC-Processed',
 
+    // Clock hours (script timezone) when run() should fire. Every 3 hours.
+    scheduleHours: [0, 3, 6, 9, 12, 15, 18, 21],
+
     driveArchiveFolderId: '1kISqnklbLKZIyCBpq6Ya_NlQJaX7T5OI',
 
     vertexProjectId: 'wc-auth-extractor',

@@ -184,7 +184,8 @@ var DoctorNpiLookup = (function () {
         normalized: normalized.normalized,
         key: normalized.key,
         lastName: normalized.lastName,
-        firstToken: normalized.firstToken
+        firstToken: normalized.firstToken,
+        tokens: normalized.tokens
       });
     }
 
@@ -243,18 +244,34 @@ var DoctorNpiLookup = (function () {
       .trim();
   }
 
+  // Credentials / honorifics stripped before matching.
+  var CREDENTIAL_TOKENS_RE =
+    /\b(dr|doctor|md|m d|do|d o|np|pa|pac|aprn|dc|dpm|phd|rn|pt|dpt|ot|otr|facs|facp)\b/g;
+
+  // Practice / legal-entity suffixes common on referral letterheads.
+  var BUSINESS_SUFFIX_RE =
+    /\b(inc|incorporated|llc|l l c|pc|p c|pllc|p l l c|corp|corporation|ltd|limited|co|company|assoc|associates|association|group|clinic|medical|medicine|healthcare|health care|services|svc|svcs)\b/g;
+
+  // Generational suffixes that should not become "last name".
+  var GENERATIONAL_RE = /\b(jr|sr|ii|iii|iv|v|2nd|3rd|4th)\b/g;
+
   /**
+   * Strip titles/credentials/business suffixes and normalize punctuation so
+   * "Raad Al-Shaikh MD INC" and "Dr. Raad Al Shaikh" both become "raad al shaikh".
+   *
    * @param {string} rawName
-   * @returns {{normalized: string, key: string, lastName: string, firstToken: string}}
+   * @returns {{normalized: string, key: string, lastName: string, firstToken: string, tokens: string[]}}
    */
   function normalizeDoctorName_(rawName) {
     var text = String(rawName || '')
       .toLowerCase()
       .replace(/["""']/g, '')
-      .replace(/\./g, ' ')
-      .replace(/,/g, ' ')
-      .replace(/\b(dr|doctor|md|m d|do|d o|np|pa|pac|aprn|dc|dpm|phd|rn)\b/g, ' ')
-      .replace(/[^a-z0-9\s-]/g, ' ')
+      .replace(/[./&,+]/g, ' ')
+      .replace(/-/g, ' ') // Al-Shaikh → al shaikh
+      .replace(CREDENTIAL_TOKENS_RE, ' ')
+      .replace(BUSINESS_SUFFIX_RE, ' ')
+      .replace(GENERATIONAL_RE, ' ')
+      .replace(/[^a-z0-9\s]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
 
@@ -268,19 +285,24 @@ var DoctorNpiLookup = (function () {
       normalized: text,
       key: key,
       lastName: lastName,
-      firstToken: firstToken
+      firstToken: firstToken,
+      tokens: tokens
     };
   }
 
   /**
-   * @param {{normalized: string, lastName: string, firstToken: string}} query
-   * @param {{normalized: string, lastName: string, firstToken: string}} entry
+   * @param {{normalized: string, lastName: string, firstToken: string, tokens: string[]}} query
+   * @param {{normalized: string, lastName: string, firstToken: string, tokens: string[]}} entry
    */
   function namesLooselyMatch_(query, entry) {
     if (!query.lastName || !entry.lastName) {
       return false;
     }
-    if (query.lastName !== entry.lastName) {
+
+    var sameLast = query.lastName === entry.lastName;
+    // Compound surnames: "al shaikh" vs last token only — require last token match
+    // plus shared first name (handled below).
+    if (!sameLast) {
       return false;
     }
 
@@ -297,14 +319,33 @@ var DoctorNpiLookup = (function () {
       }
     }
 
-    // One normalized name contains the other (handles middle names / credentials leftovers)
+    // One normalized name contains the other (handles middle names / leftover noise)
     if (
       query.normalized.indexOf(entry.normalized) !== -1 ||
       entry.normalized.indexOf(query.normalized) !== -1
     ) {
-      return query.lastName === entry.lastName;
+      return true;
     }
 
+    // Token overlap: same last name + ≥1 shared given-name token (middle names, etc.)
+    if (query.tokens && entry.tokens && sharedGivenNameToken_(query, entry)) {
+      return true;
+    }
+
+    return false;
+  }
+
+  /** True when query/entry share a non-last-name token (e.g. first or middle). */
+  function sharedGivenNameToken_(query, entry) {
+    var qGiven = query.tokens.slice(0, -1);
+    var eGiven = entry.tokens.slice(0, -1);
+    for (var i = 0; i < qGiven.length; i++) {
+      for (var j = 0; j < eGiven.length; j++) {
+        if (qGiven[i] === eGiven[j]) {
+          return true;
+        }
+      }
+    }
     return false;
   }
 

@@ -11,7 +11,9 @@ Steps
 
 4. Create a Fax Summaries record (fax_summaries) with type, sender, date, and summary filled in. This is a workspace-wide collection — create a new record for every fax, including blank ones (type = blank).
 
-5. Done. After the record is saved, briefly confirm in chat: type, documentCategory (if not blank), sender, date, patientName (if present), primaryAuthIdentifier or claimNumber (if present), and that the Fax Summaries record was created. Do not wait for a reply.
+5. Append one row to the intake Google Sheet (required — see GOOGLE SHEETS LOG below). Do this for every fax, including blank. Use the Google Sheets tools (find spreadsheet → write/append row). Do not ask anyone for the sheet URL; use the configured spreadsheet name below.
+
+6. Done. After the fax_summaries record and the Sheet row are both saved, briefly confirm in chat: type, documentCategory (if not blank), sender, date, patientName (if present), primaryAuthIdentifier or claimNumber (if present), that the Fax Summaries record was created, and that the Google Sheet was updated. Do not wait for a reply.
 
 ────────────────────────────────────────
 CLASSIFICATION — type (required)
@@ -258,6 +260,59 @@ NOTES
 Category rationale: WC carrier letter with claim number, employer insured, and pending pre-authorization language.
 
 ────────────────────────────────────────
+GOOGLE SHEETS LOG (required)
+────────────────────────────────────────
+After creating the fax_summaries record, append exactly one new row to the intake log spreadsheet.
+
+Target spreadsheet:
+- Name: REPLACE_WITH_SPREADSHEET_NAME
+  (Exact Google Drive spreadsheet title the connected Google account can edit. Prefer finding by this name; do not invent a different sheet.)
+- Tab / range: first sheet, append to the next empty row (e.g. Sheet1!A:W). If a tab named "Intake Log" or "Fax Log" exists, use that tab instead.
+- Access: use the connected Google Sheets integration (integration:google_sheets). If write fails because of permissions, note it once in the chat confirmation and still finish — do not retry endlessly or ask questions.
+
+How to write:
+1. Find the spreadsheet by the name above (find spreadsheets).
+2. Optionally read the header row once to confirm column order; if headers are missing or empty sheet, write the header row first, then the data row.
+3. Append one data row with write sheet values (append / next empty row). Never overwrite existing data rows.
+
+Column order (header row, then matching values left → right):
+
+| Col | Header | Value |
+|-----|--------|-------|
+| A | Timestamp | Current date/time when processed (ISO or locale datetime is fine) |
+| B | Auth Type | Display label (e.g. Work Comp Authorization, Imaging Referral, Blank / No Meaningful Content) |
+| C | Type Key | Raw type enum (blank, workers_comp, mva, …) |
+| D | Pre-Auth | YES if preAuthorizationApplicable; else NO (blank → NO) |
+| E | Patient | patientName |
+| F | DOB | dateOfBirth |
+| G | DOI | dateOfInjury |
+| H | Referring Provider | referringProvider |
+| I | NPI # | npiNumber (only if printed; else blank) |
+| J | Carrier / TPA | carrier |
+| K | Insured | insured |
+| L | Employer | employer |
+| M | Adjuster | adjusterName |
+| N | Adjuster Phone | adjusterPhone |
+| O | Claim # | claimNumber |
+| P | Primary Auth ID | primaryAuthIdentifier |
+| Q | Auth # | authNumber |
+| R | Review # | reviewNumber |
+| S | Referral ID | referralId |
+| T | Requestor | requestorName (records/subpoena) |
+| U | Due Date | responseDeadline |
+| V | Visits | approvedVisits |
+| W | Sender | sender |
+| X | Received Date | date (YYYY-MM-DD fax arrival) |
+| Y | Summary | Full structured summary text from the fax_summaries record |
+| Z | Status | processed |
+
+Rules:
+- Always append a row, including type = blank (most clinical columns empty; Auth Type / Type Key / Sender / Received Date / Summary / Status still filled).
+- Leave cells empty when a value was not found — do not write "N/A", "unknown", or placeholders.
+- Do not invent IDs or dates to fill columns.
+- One fax → one new row. Do not update or delete prior rows.
+
+────────────────────────────────────────
 HARD RULES
 ────────────────────────────────────────
 - Work autonomously; one pass; no questions.
@@ -266,4 +321,5 @@ HARD RULES
 - Never swap carrier and insured (CorVel/CareWest = carrier; Oakwood Village-style employers = insured/employer).
 - Prefer document content over e-fax header/CSID when they conflict.
 - Create a fax_summaries record for every fax, including blank.
-- After save, briefly confirm in chat and stop.
+- Append one Google Sheets log row for every fax after the fax_summaries record is saved.
+- After both saves, briefly confirm in chat and stop.

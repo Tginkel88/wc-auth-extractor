@@ -202,12 +202,34 @@ ACTION
 - Route imaging referral for scheduling after verification.>
 
 NOTES
-Category rationale: <categoryRationale>
-<Optional second line only if something critical does not fit above. Max one extra line.>
+<Jane starred-note paste block — required for workers_comp, mva, third_party_referral, and imaging_referral. Omit NOTES entirely for blank. For records_or_subpoena or unknown, omit NOTES unless an authorization/visit allotment is also on the fax.>
+<Plain text only. No bullets, no "Category rationale", no extra commentary inside this block. Staff copy everything from "Date of First Appointment:" through "WC Info Sheet:" into the Jane starred note.>
+
+Date of First Appointment: 0/<approvedVisitsFromPdf>V w/ Dr. ___ | <WC|MVA|INS>
+***
+Total auths (<n> auth) <approvedVisitsFromPdf>V <service>
+<authStartFromPdf>-<authEndFromPdf>: <approvedVisitsFromPdf>V <service>
+***
+Date of First Visit: Clinical Treatment Plan, Dr. ___
+CX Policy:
+WC Info Sheet:
+
+NOTES fill rules:
+- Copy-ready: match this layout exactly, including the *** separators and blank lines as shown. Leave "CX Policy:" and "WC Info Sheet:" present with nothing after the colon (staff complete those in Jane).
+- "V" means approved visits from this authorization (the Approved Visits value extracted from the PDF). 8V is only an example when the auth allows 8 visits; if the PDF says 12 visits, write 12V (and 0/12V). Never default to 8.
+- Date of First Appointment: always start used visits at 0 (first visit has not occurred). Format 0/{n}V using n from the PDF. If approved visits are missing, use 0/___V. Always "w/ Dr. ___" unless the fax names the treating/assigned clinic provider (not the referring provider).
+- Pipe suffix (only these three): WC for workers_comp | MVA for mva | INS for private insurance (third_party_referral and imaging_referral).
+- Total auths: n = number of distinct authorizations on this fax (usually 1). Example when the PDF shows 8 visits of PT: Total auths (1 auth) 8V PT
+- Service abbreviation: PT unless the fax clearly indicates another service (OT, DC, imaging modality, etc.). Prefer requestedStudy / CPT cues; do not invent a specialty.
+- Auth date line: pull the authorization start and end dates from the PDF (authDateRange). Write them as M/D/YY with no extra words (example: 11/10/25-2/9/26: 8V PT). Do not use the fax received date or invent a range. If the PDF has no date range, write ___-___: {n}V PT using the visit count from the PDF (or ___V if visits are also missing).
+- If several auths/ranges appear on the PDF, increment n and add one date line per auth with that auth's own visits and dates from the PDF. Use "(n auth)" vs "(n auths)" with matching grammar. Sum visits in the Total auths header only when they are clearly separate allotments; otherwise list each line and do not guess a combined total.
+- Date of First Visit line is always exactly: Date of First Visit: Clinical Treatment Plan, Dr. ___
+- Never invent visit counts or dates to make the Jane block look complete. Underscores/blanks are required when the source PDF does not have the value.
+- Pre-auth: still produce this block from whatever visits/dates are printed on the PDF; ALERTS already flags that it is not fully approved.
 
 Section rules:
 1. Keep section headers in ALL CAPS exactly as shown.
-2. Skip empty fields; skip empty sections entirely (except FAX SUMMARY header, Type, Overview, and Action — always include those).
+2. Skip empty fields; skip empty sections entirely (except FAX SUMMARY header, Type, Overview, Action — always include those; include NOTES whenever the Jane block applies).
 3. Prefer Primary Auth ID over repeating the same number three times in Overview/Action; still list each labeled ID under IDENTIFIERS when present.
 4. Tone: professional clinical intake — concise, no filler, no hedging essays, no markdown tables, no emoji except the word forms above are fine without symbols.
 5. Never invent values to fill the template.
@@ -257,7 +279,14 @@ ACTION
 Verify against source; do not schedule as fully approved care until pre-auth is confirmed.
 
 NOTES
-Category rationale: WC carrier letter with claim number, employer insured, and pending pre-authorization language.
+Date of First Appointment: 0/8V w/ Dr. ___ | WC
+***
+Total auths (1 auth) 8V PT
+2/1/26-5/1/26: 8V PT
+***
+Date of First Visit: Clinical Treatment Plan, Dr. ___
+CX Policy:
+WC Info Sheet:
 
 ────────────────────────────────────────
 GOOGLE SHEETS LOG (required)

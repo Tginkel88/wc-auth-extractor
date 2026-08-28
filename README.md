@@ -11,7 +11,8 @@ appends one row to the intake Google Sheet.
 
 | File | Purpose |
 |------|---------|
-| [prompt.md](prompt.md) | Gravity Rail agent prompt — classification rules, extraction schema, summary format, Jane starred-note block, and Google Sheets log columns |
+| [prompt.md](prompt.md) | Gravity Rail orchestrator / combined extract prompt — classification rules, extraction schema, summary format, Jane starred-note block, and Google Sheets log columns |
+| [prompts/new-patient-wc.md](prompts/new-patient-wc.md) | Gravity Rail worker prompt for new-patient workers' comp authorizations (`type` stays `workers_comp`; runs when `route = work_comp_new`) |
 
 There is no Apps Script or clasp tooling in this repo. Intake runs entirely
 through Gravity Rail.

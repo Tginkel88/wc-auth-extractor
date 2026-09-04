@@ -12,9 +12,21 @@ appends one row to the intake Google Sheet.
 | File | Purpose |
 |------|---------|
 | [prompt.md](prompt.md) | Gravity Rail agent prompt — classification rules, extraction schema, summary format, Jane starred-note block, and Google Sheets log columns |
+| [docs/document-processing-workflow-audit.md](docs/document-processing-workflow-audit.md) | Audit of the live fax/email document pipeline and recommended workflow changes |
+| [scripts/pull-live-workflow.sh](scripts/pull-live-workflow.sh) | Read-only `gr` dump of the Radius PT workflow graph (no PHI records) |
 
 There is no Apps Script or clasp tooling in this repo. Intake runs entirely
 through Gravity Rail.
+
+## Workflow audit
+
+A full review of the fax/email document pipeline (OCR, classification,
+`fax_summaries`, Google Sheets, staff email, Jane paste) is in
+[docs/document-processing-workflow-audit.md](docs/document-processing-workflow-audit.md).
+
+To dump the live Gravity Rail graph (no PHI records): install
+`@gravity-rail/cli`, run `gr login --env prod`, then
+[`scripts/pull-live-workflow.sh`](scripts/pull-live-workflow.sh).
 
 ## Prompt overview
 
